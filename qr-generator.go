@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
 	"strings"
+	"time"
 
 	//"sync"
 
@@ -16,10 +18,13 @@ import (
 )
 
 // TODO POSSIBLE TO MAKE GOROUTINE?
-func generateZIPFile(qrValues []string) {
-	fmt.Println(qrValues)
+func generateZIPFile(qrValues []string, saveName string) {
+	currentTime := time.Now()
+	formatTime := fmt.Sprintf(currentTime.Format("20060102150405"))
 
-	qrZIP, err := os.Create("qrcodes.zip")
+	saveName = saveName + "-" + formatTime + ".zip"
+
+	qrZIP, err := os.Create("files/" + saveName)
 	if err != nil {
 		panic(err)
 	}
@@ -47,6 +52,8 @@ func generateZIPFile(qrValues []string) {
 		}
 	}
 	zipWriter.Close()
+
+	fmt.Printf("%v werd aangemaakt\n", saveName)
 }
 
 func indexOfColumn(columns []string, columnLetter string) int {
@@ -56,6 +63,22 @@ func indexOfColumn(columns []string, columnLetter string) int {
 		}
 	}
 	return -1
+}
+
+func checkFormatValue(cellValue string) (string, bool) {
+	matchDots, _ := regexp.MatchString("^[0-9]{4}.[0-9]{3}.[0-9]{3}$", cellValue)
+	matchNoDots, _ := regexp.MatchString("^[0-9]{10}$", cellValue)
+
+	if matchDots == true || matchNoDots == true {
+		if matchNoDots == true {
+			return cellValue, true
+		} else {
+			cellValueNoDots := strings.Split(cellValue, ".")
+			cellValue = strings.Join(cellValueNoDots, "")
+			return cellValue, true
+		}
+	}
+	return cellValue, false
 }
 
 func selectColumn(sheetValues [][]string) []string {
@@ -95,14 +118,52 @@ func selectColumn(sheetValues [][]string) []string {
 	// TODO: put this in seperate function?
 	// TODO: regex check ondernemingsnummer format?
 	var cellValues []string
+	var wrongValues []string
 
-	for i, rowCell := range sheetValues[index] {
+	for i, cellValue := range sheetValues[index] {
 		if i == 0 && hasTitle == "y" {
 			continue
 		}
-		// generate URL
-		rowCell = fmt.Sprintf("https://www.google.com/%v/%v", chooseOption, rowCell)
-		cellValues = append(cellValues, rowCell)
+
+		// check if the format is correct
+		correctCellValue, isCorrect := checkFormatValue(cellValue)
+
+		if isCorrect == false {
+			wrongValues = append(wrongValues, correctCellValue)
+		} else {
+			// generate URL
+			correctCellValue = fmt.Sprintf("https://www.google.com/%v/%v", chooseOption, correctCellValue)
+			cellValues = append(cellValues, correctCellValue)
+		}
+
+	}
+	if len(wrongValues) > 0 {
+		// create a logfile
+		f, err := os.Create("files/log.txt")
+		if err != nil {
+			panic(err)
+		}
+
+		defer f.Close()
+
+		for _, wrongValue := range wrongValues {
+			_, err := f.WriteString(wrongValue + "\n")
+			if err != nil {
+				panic(err)
+			}
+		}
+		var ignoreError string
+		for {
+			fmt.Printf("%v waarden (van de %v) staan in een foutief formaat.\nDoorgaan? [y] [n]\n", len(wrongValues), len(cellValues)+len(wrongValues))
+			fmt.Scan(&ignoreError)
+			ignoreError = strings.ToLower(ignoreError)
+			if ignoreError == "y" {
+				break
+			} else if ignoreError == "n" {
+				fmt.Println("Je kan de foute waarde in de log-file vinden.")
+				os.Exit(1)
+			}
+		}
 	}
 	return cellValues
 }
@@ -142,6 +203,11 @@ func openSourceFile(fileName string) [][]string {
 	return sheetValues
 }
 
+func fileNameNoExtension(fileName string) string {
+	saveName := strings.Split(fileName, ".")
+	return saveName[0]
+}
+
 func askFileName() string {
 	fmt.Println("Geef de naam en extensie van jouw bestand [lijst.xlsx]")
 	scanner := bufio.NewScanner(os.Stdin)
@@ -152,12 +218,13 @@ func askFileName() string {
 
 func main() {
 	fileName := askFileName()
-	fmt.Println(fileName)
+
+	saveName := fileNameNoExtension(fileName)
 
 	sheetValues := openSourceFile(fileName)
 
 	// get the values of a specific column
 	qrValues := selectColumn(sheetValues)
 
-	generateZIPFile(qrValues)
+	generateZIPFile(qrValues, saveName)
 }
