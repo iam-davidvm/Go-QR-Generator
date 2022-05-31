@@ -129,6 +129,7 @@ func selectColumn(sheetValues [][]string) []string {
 		correctCellValue, isCorrect := checkFormatValue(cellValue)
 
 		if isCorrect == false {
+			correctCellValue = fmt.Sprintf("Rij %v - %v", i+1, correctCellValue)
 			wrongValues = append(wrongValues, correctCellValue)
 		} else {
 			// generate URL
