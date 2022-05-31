@@ -1,13 +1,53 @@
 package main
 
 import (
+	"archive/zip"
 	"bufio"
+	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
+	//"sync"
+
+	"github.com/skip2/go-qrcode"
 	"github.com/xuri/excelize/v2"
 )
+
+// TODO POSSIBLE TO MAKE GOROUTINE?
+func generateZIPFile(qrValues []string) {
+	fmt.Println(qrValues)
+
+	qrZIP, err := os.Create("qrcodes.zip")
+	if err != nil {
+		panic(err)
+	}
+
+	defer qrZIP.Close()
+	zipWriter := zip.NewWriter(qrZIP)
+
+	for _, qrValue := range qrValues {
+		qrName := qrValue[len(qrValue)-10:] + ".png"
+		var png []byte
+		png, err := qrcode.Encode(qrValue, qrcode.Medium, 500)
+
+		if err != nil {
+			panic(err)
+		}
+
+		pngFile := bytes.NewReader(png)
+
+		qrFile, err := zipWriter.Create(qrName)
+		if err != nil {
+			panic(err)
+		}
+		if _, err := io.Copy(qrFile, pngFile); err != nil {
+			panic(err)
+		}
+	}
+	zipWriter.Close()
+}
 
 func indexOfColumn(columns []string, columnLetter string) int {
 	for i := range columns {
@@ -60,6 +100,7 @@ func selectColumn(sheetValues [][]string) []string {
 		if i == 0 && hasTitle == "y" {
 			continue
 		}
+		// generate URL
 		rowCell = fmt.Sprintf("https://www.google.com/%v/%v", chooseOption, rowCell)
 		cellValues = append(cellValues, rowCell)
 	}
@@ -116,6 +157,7 @@ func main() {
 	sheetValues := openSourceFile(fileName)
 
 	// get the values of a specific column
-	columnValue := selectColumn(sheetValues)
-	fmt.Println(columnValue)
+	qrValues := selectColumn(sheetValues)
+
+	generateZIPFile(qrValues)
 }
